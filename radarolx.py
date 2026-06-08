@@ -2,9 +2,11 @@ import requests
 import re
 import os
 
-# --- CONFIGURAÇÃO ---
-TELEGRAM_TOKEN = "8850082349:AAE2z7yReEdnMZEEF89D4e5CqKdSeOrnDNE"
-TELEGRAM_CHAT_ID = "6757240145"
+# --- AS CHAVES SÃO LIDAS A PARTIR DO AMBIENTE (GITHUB SECRETS) ---
+# Se correres localmente, podes definir estas variáveis no teu sistema, 
+# mas no GitHub Actions o sistema injeta-as automaticamente.
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 alvos = {
     "O Meu Opel Astra G": "https://www.olx.pt/d/anuncio/opel-astra-g-1-4-16v-nico-dono-IDJr5i2.html",
@@ -17,6 +19,11 @@ headers = {
 }
 
 def enviar_telegram(mensagem):
+    """Envia a mensagem para o teu telemóvel via bot"""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Erro: Chaves do Telegram em falta!")
+        return
+        
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     dados = {
         "chat_id": TELEGRAM_CHAT_ID, 
@@ -24,24 +31,26 @@ def enviar_telegram(mensagem):
         "parse_mode": "Markdown",
         "disable_notification": False 
     }
-    requests.post(url, data=dados)
+    try:
+        requests.post(url, data=dados)
+    except Exception as e:
+        print(f"Erro ao enviar para o Telegram: {e}")
 
 def monitorizar():
-    relatorio = "📊 *Radar OLX Cloud:*\n\n"
+    relatorio = "📊 *Radar OLX Cloud (GitHub Actions):*\n\n"
     
     for nome, url in alvos.items():
         try:
-            # Faz o download do código fonte da página
+            # Faz o pedido HTTP
             resposta = requests.get(url, headers=headers)
             html = resposta.text
             
             # Verifica se está ativo
             if "Este anúncio já não se encontra ativo" in html:
-                enviar_telegram(f"🚨 *URGENTE*: {nome} foi vendido!")
+                enviar_telegram(f"🚨 *URGENTE*: {nome} foi vendido ou removido!")
                 continue
             
-            # Procura o número usando Regex no código fonte
-            # O OLX esconde o número num formato JSON dentro do script da página
+            # Procura o número escondido no código fonte
             busca = re.search(r'"page_view_counter":"(\d+)"', html)
             
             if busca:
@@ -53,6 +62,7 @@ def monitorizar():
         except Exception as e:
             print(f"Erro ao verificar {nome}: {e}")
 
+    # Envia o relatório final
     enviar_telegram(relatorio)
 
 if __name__ == "__main__":
