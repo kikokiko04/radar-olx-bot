@@ -2,9 +2,7 @@ import requests
 import re
 import os
 
-# --- AS CHAVES SÃO LIDAS A PARTIR DO AMBIENTE (GITHUB SECRETS) ---
-# Se correres localmente, podes definir estas variáveis no teu sistema, 
-# mas no GitHub Actions o sistema injeta-as automaticamente.
+# --- AS CHAVES VÊM DO SISTEMA, NÃO ESTÃO ESCRITAS AQUI ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
@@ -13,13 +11,13 @@ alvos = {
     "Hyundai Coupe RD1": "https://www.olx.pt/d/anuncio/vendo-hyundai-coup-1-6-de-1997-IDJpCvq.html"
 }
 
-# Cabeçalhos para fingir ser um browser real
+# Usamos um User-Agent de um browser atual para evitar bloqueios de segurança
 headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 }
 
 def enviar_telegram(mensagem):
-    """Envia a mensagem para o teu telemóvel via bot"""
+    """Envia o relatório para o teu telemóvel"""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("Erro: Chaves do Telegram em falta!")
         return
@@ -37,32 +35,34 @@ def enviar_telegram(mensagem):
         print(f"Erro ao enviar para o Telegram: {e}")
 
 def monitorizar():
-    relatorio = "📊 *Radar OLX Cloud (GitHub Actions):*\n\n"
+    relatorio = "📊 *Radar OLX (Cloud Mode):*\n\n"
     
     for nome, url in alvos.items():
         try:
-            # Faz o pedido HTTP
+            # Faz o pedido HTTP ao OLX
             resposta = requests.get(url, headers=headers)
             html = resposta.text
             
             # Verifica se está ativo
-            if "Este anúncio já não se encontra ativo" in html:
+            if "Este anúncio já não se encontra ativo" in html or resposta.status_code == 404:
                 enviar_telegram(f"🚨 *URGENTE*: {nome} foi vendido ou removido!")
                 continue
             
-            # Procura o número escondido no código fonte
-            busca = re.search(r'"page_view_counter":"(\d+)"', html)
+            # Procura pelo padrão que contém o número de visualizações
+            # Tenta encontrar no formato JSON de configuração da página
+            busca = re.search(r'"viewCount":(\d+)', html)
             
             if busca:
                 cliq = busca.group(1)
                 relatorio += f"🟢 {nome}: {cliq} Cliques\n"
             else:
-                relatorio += f"⚠️ {nome}: Não foi possível ler cliques.\n"
+                relatorio += f"⚠️ {nome}: Falha na leitura (HTML mudou).\n"
+                print(f"DEBUG: Não encontrei cliques em {nome}")
                 
         except Exception as e:
             print(f"Erro ao verificar {nome}: {e}")
 
-    # Envia o relatório final
+    # Envia o relatório final ao Telegram
     enviar_telegram(relatorio)
 
 if __name__ == "__main__":
